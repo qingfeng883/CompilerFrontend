@@ -6,9 +6,11 @@ import java.util.List;
 
 public class SemanticAnalyzer {
     private SymbolTable symTable;
+    private int currentLine;
 
     public SemanticAnalyzer() {
         this.symTable = new SymbolTable();
+        this.currentLine = 1;
     }
 
     public SymbolTable analyze(ASTNode root) {
@@ -16,9 +18,15 @@ public class SemanticAnalyzer {
         return symTable;
     }
 
+    public SymbolTable getSymbolTable() {
+        return symTable;
+    }
+
     private void visit(ASTNode node) {
         if (node instanceof BlockNode) {
             visitBlock((BlockNode) node);
+        } else if (node instanceof DeclarationNode) {
+            visitDeclaration((DeclarationNode) node);
         } else if (node instanceof AssignNode) {
             visitAssign((AssignNode) node);
         } else if (node instanceof IfNode) {
@@ -31,8 +39,6 @@ public class SemanticAnalyzer {
             // 无需处理
         } else if (node instanceof IdNode) {
             visitId((IdNode) node);
-        } else {
-            throw new RuntimeException("未知 AST 节点: " + node.getClass());
         }
     }
 
@@ -44,15 +50,31 @@ public class SemanticAnalyzer {
         symTable.exitScope();
     }
 
+    private void visitDeclaration(DeclarationNode decl) {
+        String varName = decl.getId();
+        String varType = decl.getType();
+
+        // 声明变量（无行号信息，传 -1）
+        symTable.declare(varName, varType);
+        System.out.println("[语义分析] 声明变量: " + varName + " : " + varType);
+
+        // 如果有初始化表达式，检查表达式
+        if (decl.hasInit()) {
+            visit(decl.getInitExpr());
+        }
+    }
+
     private void visitAssign(AssignNode assign) {
-        // 左侧标识符：若未声明则自动声明（int类型）并给出警告
         String varName = assign.getId();
         Symbol existing = symTable.lookup(varName);
+
         if (existing == null) {
-            System.err.println("警告：变量 '" + varName + "' 未声明，已自动声明为 int 类型");
-            symTable.declare(varName, "int", -1); // 行号未知，可后续改进
+            // 未声明则自动声明为 int 类型
+            System.out.println("[语义分析] 警告: 变量 '" + varName + "' 未声明，已自动声明为 int 类型");
+            symTable.declare(varName, "int");
         }
-        // 检查表达式（确保其中的变量已声明）
+
+        // 检查表达式
         visit(assign.getExpr());
     }
 
@@ -75,15 +97,9 @@ public class SemanticAnalyzer {
     }
 
     private void visitId(IdNode id) {
-        // 检查变量是否已声明（未声明则报错）
-        // 注意：这里不自动声明，只在赋值时允许自动声明
         Symbol sym = symTable.lookup(id.getName());
         if (sym == null) {
             throw new RuntimeException("变量 '" + id.getName() + "' 在使用前未声明");
         }
-    }
-
-    public SymbolTable getSymbolTable() {
-        return symTable;
     }
 }

@@ -16,6 +16,9 @@ public class Lexer {
     static {
         keywords.add("if");
         keywords.add("int");
+        keywords.add("float");
+        keywords.add("string");
+        keywords.add("bool");
         keywords.add("while");
         keywords.add("do");
         keywords.add("else");
@@ -92,14 +95,24 @@ public class Lexer {
         int startLine = line;
         int startCol = col;
         StringBuilder sb = new StringBuilder();
-        while (pos < source.length() && Character.isDigit(peekChar())) {
+        boolean isFloat = false;
+
+        while (pos < source.length() && (Character.isDigit(peekChar()) || peekChar() == '.')) {
+            if (peekChar() == '.') {
+                if (isFloat) {
+                    throw new RuntimeException("数字格式错误，多个小数点 '" + peekChar() + "' 在 " + line + ":" + col);
+                }
+                isFloat = true;
+            }
             sb.append(peekChar());
             advance();
         }
-        // 检查数字后是否紧跟字母（非法标识符如 123abc）
+
+        // 检查数字后是否紧跟字母
         if (pos < source.length() && Character.isLetter(peekChar())) {
             throw new RuntimeException("数字后不能直接跟字母 '" + peekChar() + "' 在 " + line + ":" + col);
         }
+
         tokens.add(new Token(TokenType.NUMBER, sb.toString(), startLine, startCol));
     }
 
@@ -108,8 +121,9 @@ public class Lexer {
         int startCol = col;
         char c = peekChar();
         advance();
-        // 处理双字符运算符 <= >= !=
-        if ((c == '<' || c == '>' || c == '!') && peekChar() == '=') {
+
+        // 处理双字符运算符 <= >= != ==
+        if ((c == '<' || c == '>' || c == '!' || c == '=') && peekChar() == '=') {
             String op = "" + c + "=";
             advance();
             tokens.add(new Token(TokenType.OPERATOR, op, startLine, startCol));

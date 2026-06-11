@@ -1,4 +1,3 @@
-
 import ir.CodeGenerator;
 import ir.Quadruple;
 import lexer.Lexer;
@@ -12,12 +11,16 @@ import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
+        // 测试嵌套 if-else 语句
         String code = """
-                { 
-                    a = 3;
-                    b = 4;
-                    if (a < b) {
-                        c = a + b;
+                {
+                    x = 3;
+                    if (x < 3) {
+                        if (x > 0) {
+                            x = 5;
+                        } else {
+                            x = 7;
+                        }
                     }
                 }
                 """;

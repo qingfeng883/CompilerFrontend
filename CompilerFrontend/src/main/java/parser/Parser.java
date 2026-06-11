@@ -9,10 +9,12 @@ import java.util.List;
 public class Parser {
     private List<Token> tokens;
     private int pos;
+    private Token currentToken;
 
     public Parser(List<Token> tokens) {
         this.tokens = tokens;
         this.pos = 0;
+        this.currentToken = peek();
     }
 
     private Token peek() {
@@ -20,34 +22,43 @@ public class Parser {
         return tokens.get(pos);
     }
 
+    private void advance() {
+        pos++;
+        if (pos < tokens.size()) {
+            currentToken = tokens.get(pos);
+        } else {
+            currentToken = null;
+        }
+    }
+
     private Token consume(TokenType expected) {
-        Token t = peek();
+        Token t = currentToken;
         if (t == null) throw new RuntimeException("Unexpected EOF, expected " + expected);
         if (t.getType() == expected) {
-            pos++;
+            advance();
             return t;
         }
-        throw new RuntimeException("Expected " + expected + " but got " + t.getType() + " at " + t.getLine() + ":" + t.getColumn());
+        throw new RuntimeException("Expected " + expected + " but got " + t.getType() +
+                " at " + t.getLine() + ":" + t.getColumn());
     }
 
     private Token consume(TokenType expected, String value) {
-        Token t = peek();
-        if (t == null) throw new RuntimeException("Unexpected EOF, expected " + expected + "(" + value + ")");
+        Token t = currentToken;
+        if (t == null) throw new RuntimeException("Unexpected EOF");
         if (t.getType() == expected && t.getValue().equals(value)) {
-            pos++;
+            advance();
             return t;
         }
-        throw new RuntimeException("Expected " + expected + "(" + value + ") but got " + t + " at " + t.getLine() + ":" + t.getColumn());
+        throw new RuntimeException("Expected " + expected + "(" + value + ") but got " + t);
     }
 
     private boolean match(TokenType type) {
-        Token t = peek();
-        return t != null && t.getType() == type;
+        return currentToken != null && currentToken.getType() == type;
     }
 
     private boolean match(TokenType type, String value) {
-        Token t = peek();
-        return t != null && t.getType() == type && t.getValue().equals(value);
+        return currentToken != null && currentToken.getType() == type &&
+                currentToken.getValue().equals(value);
     }
 
     // program → block
@@ -72,95 +83,153 @@ public class Parser {
         return stmts;
     }
 
-    // stmt → id = expr ;
-    //       | if ( bool ) stmt
-    //       | if ( bool ) stmt else stmt
-    //       | while ( bool ) stmt
-    //       | block
+    // stmt → declaration | assignment | if_stmt | while_stmt | block
     private ASTNode parseStmt() {
-        if (match(TokenType.IDENTIFIER)) {
-            Token idToken = consume(TokenType.IDENTIFIER);
-            consume(TokenType.OPERATOR, "=");
-            ASTNode expr = parseExpr();
-            consume(TokenType.SEPARATOR, ";");
-            return new AssignNode(idToken.getValue(), expr);
-        } else if (match(TokenType.IF)) {
-            consume(TokenType.IF);
-            consume(TokenType.SEPARATOR, "(");
-            ASTNode cond = parseBool();
-            consume(TokenType.SEPARATOR, ")");
-            ASTNode thenStmt = parseStmt();
-            ASTNode elseStmt = null;
-            if (match(TokenType.ELSE)) {
-                consume(TokenType.ELSE);
-                elseStmt = parseStmt();
-            }
-            return new IfNode(cond, thenStmt, elseStmt);
-        } else if (match(TokenType.WHILE)) {
-            consume(TokenType.WHILE);
-            consume(TokenType.SEPARATOR, "(");
-            ASTNode cond = parseBool();
-            consume(TokenType.SEPARATOR, ")");
-            ASTNode body = parseStmt();
-            return new WhileNode(cond, body);
-        } else if (match(TokenType.SEPARATOR, "{")) {
+        // 类型声明 (int, float, string, bool)
+        if (isType()) {
+            return parseDeclaration();
+        }
+        // if 语句
+        else if (match(TokenType.IF)) {
+            return parseIfStmt();
+        }
+        // while 语句
+        else if (match(TokenType.WHILE)) {
+            return parseWhileStmt();
+        }
+        // 代码块
+        else if (match(TokenType.SEPARATOR, "{")) {
             return parseBlock();
-        } else {
-            throw new RuntimeException("Unexpected token at stmt: " + peek());
+        }
+        // 赋值语句 (必须以 ID 开头)
+        else if (match(TokenType.IDENTIFIER)) {
+            return parseAssignment();
+        }
+        else {
+            throw new RuntimeException("Unexpected token: " + currentToken);
         }
     }
 
-    // bool → expr < expr
-    //       | expr <= expr
-    //       | expr > expr
-    //       | expr >= expr
-    //       | expr
+    // 判断是否为类型关键字
+    private boolean isType() {
+        if (currentToken == null) return false;
+        String value = currentToken.getValue();
+        return value.equals("int") || value.equals("float") ||
+                value.equals("string") || value.equals("bool");
+    }
+
+    // declaration → type id ; | type id = expr ;
+    private DeclarationNode parseDeclaration() {
+        String type = currentToken.getValue();
+        consume(TokenType.IDENTIFIER);  // 消费类型关键字
+
+        String id = currentToken.getValue();
+        consume(TokenType.IDENTIFIER);
+
+        ASTNode initExpr = null;
+        if (match(TokenType.OPERATOR, "=")) {
+            consume(TokenType.OPERATOR, "=");
+            initExpr = parseExpr();
+        }
+
+        consume(TokenType.SEPARATOR, ";");
+        return new DeclarationNode(type, id, initExpr);
+    }
+
+    // assignment → id = expr ;
+    private AssignNode parseAssignment() {
+        String id = currentToken.getValue();
+        consume(TokenType.IDENTIFIER);
+        consume(TokenType.OPERATOR, "=");
+        ASTNode expr = parseExpr();
+        consume(TokenType.SEPARATOR, ";");
+        return new AssignNode(id, expr);
+    }
+
+    // if_stmt → if ( bool ) stmt | if ( bool ) stmt else stmt
+    private IfNode parseIfStmt() {
+        consume(TokenType.IF);
+        consume(TokenType.SEPARATOR, "(");
+        ASTNode cond = parseBool();
+        consume(TokenType.SEPARATOR, ")");
+        ASTNode thenStmt = parseStmt();
+        ASTNode elseStmt = null;
+        if (match(TokenType.ELSE)) {
+            consume(TokenType.ELSE);
+            elseStmt = parseStmt();
+        }
+        return new IfNode(cond, thenStmt, elseStmt);
+    }
+
+    // while_stmt → while ( bool ) stmt
+    private WhileNode parseWhileStmt() {
+        consume(TokenType.WHILE);
+        consume(TokenType.SEPARATOR, "(");
+        ASTNode cond = parseBool();
+        consume(TokenType.SEPARATOR, ")");
+        ASTNode body = parseStmt();
+        return new WhileNode(cond, body);
+    }
+
+    // bool → expr rel_op expr | expr
     private ASTNode parseBool() {
         ASTNode left = parseExpr();
+        if (isRelOp()) {
+            String op = currentToken.getValue();
+            consume(TokenType.OPERATOR);
+            ASTNode right = parseExpr();
+            return new BinaryOpNode(op, left, right);
+        }
+        return left;
+    }
+
+    private boolean isRelOp() {
+        if (currentToken == null) return false;
+        String op = currentToken.getValue();
+        return op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=");
+    }
+
+    // expr → term expr_tail (消除左递归)
+    private ASTNode parseExpr() {
+        ASTNode node = parseTerm();
+        return parseExprTail(node);
+    }
+
+    // expr_tail → + term expr_tail | - term expr_tail | ε
+    private ASTNode parseExprTail(ASTNode left) {
         if (match(TokenType.OPERATOR)) {
-            String op = peek().getValue();
-            if (op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=")) {
+            String op = currentToken.getValue();
+            if (op.equals("+") || op.equals("-")) {
                 consume(TokenType.OPERATOR);
-                ASTNode right = parseExpr();
-                return new BinaryOpNode(op, left, right);
+                ASTNode right = parseTerm();
+                ASTNode newNode = new BinaryOpNode(op, left, right);
+                return parseExprTail(newNode);
             }
         }
         return left;
     }
 
-    // expr → term { (+|-) term }
-    private ASTNode parseExpr() {
-        ASTNode node = parseTerm();
-        while (match(TokenType.OPERATOR)) {
-            String op = peek().getValue();
-            if (op.equals("+") || op.equals("-")) {
-                consume(TokenType.OPERATOR);
-                ASTNode right = parseTerm();
-                node = new BinaryOpNode(op, node, right);
-            } else {
-                break;
-            }
-        }
-        return node;
-    }
-
-    // term → factor { (*|/) factor }
+    // term → factor term_tail (消除左递归)
     private ASTNode parseTerm() {
         ASTNode node = parseFactor();
-        while (match(TokenType.OPERATOR)) {
-            String op = peek().getValue();
+        return parseTermTail(node);
+    }
+
+    // term_tail → * factor term_tail | / factor term_tail | ε
+    private ASTNode parseTermTail(ASTNode left) {
+        if (match(TokenType.OPERATOR)) {
+            String op = currentToken.getValue();
             if (op.equals("*") || op.equals("/")) {
                 consume(TokenType.OPERATOR);
                 ASTNode right = parseFactor();
-                node = new BinaryOpNode(op, node, right);
-            } else {
-                break;
+                ASTNode newNode = new BinaryOpNode(op, left, right);
+                return parseTermTail(newNode);
             }
         }
-        return node;
+        return left;
     }
 
-    // factor → ( expr ) | NUM | ID
+    // factor → ( expr ) | ID | NUM
     private ASTNode parseFactor() {
         if (match(TokenType.SEPARATOR, "(")) {
             consume(TokenType.SEPARATOR, "(");
@@ -169,12 +238,18 @@ public class Parser {
             return node;
         } else if (match(TokenType.NUMBER)) {
             Token num = consume(TokenType.NUMBER);
-            return new NumberNode(Integer.parseInt(num.getValue()));
+            // 支持浮点数
+            String numStr = num.getValue();
+            if (numStr.contains(".")) {
+                return new NumberNode(Float.parseFloat(numStr));
+            } else {
+                return new NumberNode(Integer.parseInt(numStr));
+            }
         } else if (match(TokenType.IDENTIFIER)) {
             Token id = consume(TokenType.IDENTIFIER);
             return new IdNode(id.getValue());
         } else {
-            throw new RuntimeException("Unexpected token in factor: " + peek());
+            throw new RuntimeException("Unexpected token in factor: " + currentToken);
         }
     }
 }
