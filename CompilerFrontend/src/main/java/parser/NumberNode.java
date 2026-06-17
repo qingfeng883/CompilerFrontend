@@ -9,12 +9,30 @@ public class NumberNode extends ASTNode {
         this.isInt = true;
     }
 
+    public NumberNode(int value, int line, int column) {
+        super(line, column);
+        this.value = value;
+        this.isInt = true;
+    }
+
     public NumberNode(float value) {
         this.value = value;
         this.isInt = false;
     }
 
+    public NumberNode(float value, int line, int column) {
+        super(line, column);
+        this.value = value;
+        this.isInt = false;
+    }
+
     public NumberNode(double value) {
+        this.value = value;
+        this.isInt = false;
+    }
+
+    public NumberNode(double value, int line, int column) {
+        super(line, column);
         this.value = value;
         this.isInt = false;
     }

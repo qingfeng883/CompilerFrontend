@@ -9,6 +9,12 @@ public class AssignNode extends ASTNode {
         this.expr = expr;
     }
 
+    public AssignNode(String id, ASTNode expr, int line, int column) {
+        super(line, column);
+        this.id = id;
+        this.expr = expr;
+    }
+
     public String getId() { return id; }
     public ASTNode getExpr() { return expr; }
 

@@ -3,9 +3,16 @@ package parser;
 public class IfNode extends ASTNode {
     private ASTNode condition;
     private ASTNode thenStmt;
-    private ASTNode elseStmt; // 可为 null
+    private ASTNode elseStmt;
 
     public IfNode(ASTNode condition, ASTNode thenStmt, ASTNode elseStmt) {
+        this.condition = condition;
+        this.thenStmt = thenStmt;
+        this.elseStmt = elseStmt;
+    }
+
+    public IfNode(ASTNode condition, ASTNode thenStmt, ASTNode elseStmt, int line, int column) {
+        super(line, column);
         this.condition = condition;
         this.thenStmt = thenStmt;
         this.elseStmt = elseStmt;

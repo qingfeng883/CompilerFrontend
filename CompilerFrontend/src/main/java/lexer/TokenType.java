@@ -2,9 +2,9 @@ package lexer;
 
 public enum TokenType {
     // 关键字
-    IF, INT, FLOAT, STRING, BOOL, WHILE, DO, ELSE, RETURN, CONTINUE,
+    IF, INT,WHILE, DO, ELSE, RETURN, CONTINUE,
     // 标识符
-    IDENTIFIER,
+    BOOL,IDENTIFIER,
     // 常数
     NUMBER,
     // 运算符
@@ -12,5 +12,6 @@ public enum TokenType {
     // 分隔符
     SEPARATOR,
     // 文件结尾
+    ERROR,        // 错误Token (种别码 -1)
     EOF
 }
