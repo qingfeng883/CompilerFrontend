@@ -9,16 +9,14 @@ public class Lexer {
     private final String source;
     private int pos;
     private int line;
-    private int col;
+    private int wordCol;
     private final List<Token> tokens;
+    private final List<String> errors;
     private static final Set<String> keywords = new HashSet<>();
 
     static {
         keywords.add("if");
         keywords.add("int");
-        keywords.add("float");
-        keywords.add("string");
-        keywords.add("bool");
         keywords.add("while");
         keywords.add("do");
         keywords.add("else");
@@ -30,31 +28,82 @@ public class Lexer {
         this.source = source;
         this.pos = 0;
         this.line = 1;
-        this.col = 1;
+        this.wordCol = 1;
         this.tokens = new ArrayList<>();
+        this.errors = new ArrayList<>();
     }
 
     public List<Token> tokenize() {
         while (pos < source.length()) {
-            char current = peekChar();
-            if (Character.isWhitespace(current)) {
-                skipWhitespace();
-                continue;
-            }
-            if (Character.isLetter(current)) {
-                readIdentifierOrKeyword();
-            } else if (Character.isDigit(current)) {
-                readNumber();
-            } else if (isOperatorChar(current)) {
-                readOperator();
-            } else if (isSeparatorChar(current)) {
-                readSeparator();
-            } else {
-                throw new RuntimeException("非法字符 '" + current + "' 在 " + line + ":" + col);
+            try {
+                char current = peekChar();
+
+                // 跳过空白字符
+                if (Character.isWhitespace(current)) {
+                    skipWhitespace();
+                    continue;
+                }
+
+                // 处理注释
+                if (current == '/') {
+                    if (peekNextChar() == '/') {
+                        skipSingleLineComment();
+                        continue;
+                    } else if (peekNextChar() == '*') {
+                        skipMultiLineComment();
+                        continue;
+                    }
+                }
+
+                int currentWordCol = wordCol;
+                int currentLine = line;
+
+                // 标识符：字母或下划线开头
+                if (Character.isLetter(current)) {
+                    readIdentifierOrKeyword(currentWordCol);
+                }
+                // 数字：以数字开头
+                else if (Character.isDigit(current)) {
+                    readNumber(currentWordCol);
+                }
+                // 运算符
+                else if (isOperatorChar(current)) {
+                    readOperator(currentWordCol);
+                }
+                // 分隔符
+                else if (isSeparatorChar(current)) {
+                    readSeparator(currentWordCol);
+                }
+                // 非法字符
+                else {
+                    String illegalChar = String.valueOf(current);
+                    errors.add("[ERROR] Illegal character | '" + illegalChar + "' | at " + line + ":" + currentWordCol);
+                    tokens.add(new Token(TokenType.ERROR, illegalChar, line, currentWordCol, -1, "Illegal character"));
+                    advance();
+                    wordCol++;
+                }
+
+            } catch (RuntimeException e) {
+                errors.add(e.getMessage());
+                recover();
             }
         }
-        tokens.add(new Token(TokenType.EOF, "", line, col));
+        tokens.add(new Token(TokenType.EOF, "", line, wordCol, 0, "End of file"));
         return tokens;
+    }
+
+    public List<String> getErrors() {
+        return errors;
+    }
+
+    public boolean hasErrors() {
+        return !errors.isEmpty();
+    }
+
+    public void printErrors() {
+        for (String error : errors) {
+            System.err.println(error);
+        }
     }
 
     private char peekChar() {
@@ -62,12 +111,20 @@ public class Lexer {
         return source.charAt(pos);
     }
 
+    private char peekNextChar() {
+        if (pos + 1 >= source.length()) return '\0';
+        return source.charAt(pos + 1);
+    }
+
     private void advance() {
-        if (peekChar() == '\n') {
+        if (pos >= source.length()) return;
+
+        char c = source.charAt(pos);
+        if (c == '\n') {
             line++;
-            col = 1;
+            wordCol = 1;
         } else {
-            col++;
+            wordCol++;
         }
         pos++;
     }
@@ -78,66 +135,164 @@ public class Lexer {
         }
     }
 
-    private void readIdentifierOrKeyword() {
-        int startLine = line;
-        int startCol = col;
-        StringBuilder sb = new StringBuilder();
-        while (pos < source.length() && (Character.isLetterOrDigit(peekChar()))) {
-            sb.append(peekChar());
-            advance();
-        }
-        String word = sb.toString();
-        TokenType type = keywords.contains(word) ? TokenType.valueOf(word.toUpperCase()) : TokenType.IDENTIFIER;
-        tokens.add(new Token(type, word, startLine, startCol));
-    }
-
-    private void readNumber() {
-        int startLine = line;
-        int startCol = col;
-        StringBuilder sb = new StringBuilder();
-        boolean isFloat = false;
-
-        while (pos < source.length() && (Character.isDigit(peekChar()) || peekChar() == '.')) {
-            if (peekChar() == '.') {
-                if (isFloat) {
-                    throw new RuntimeException("数字格式错误，多个小数点 '" + peekChar() + "' 在 " + line + ":" + col);
-                }
-                isFloat = true;
+    private void recover() {
+        while (pos < source.length()) {
+            char c = peekChar();
+            if (c == '\n' || Character.isWhitespace(c) ||
+                    Character.isLetter(c) || c == '_' || Character.isDigit(c) ||
+                    isOperatorChar(c) || isSeparatorChar(c)) {
+                return;
             }
+            advance();
+        }
+    }
+
+    // 跳过单行注释 //
+    private void skipSingleLineComment() {
+        advance(); advance();
+        while (pos < source.length() && peekChar() != '\n') {
+            advance();
+        }
+    }
+
+    // 跳过多行注释 /* */
+    private void skipMultiLineComment() {
+        advance(); advance();
+        while (pos < source.length()) {
+            if (peekChar() == '*' && peekNextChar() == '/') {
+                advance(); advance();
+                break;
+            }
+            if (peekChar() == '\n') {
+                advance();
+            } else {
+                advance();
+            }
+        }
+    }
+
+    // 读取标识符或关键字
+    private void readIdentifierOrKeyword(int col) {
+        int startLine = line;
+        int startCol = col;
+        StringBuilder sb = new StringBuilder();
+
+        // 读取字母、数字
+        while (pos < source.length() &&
+                (Character.isLetterOrDigit(peekChar())  )) {
             sb.append(peekChar());
             advance();
         }
 
-        // 检查数字后是否紧跟字母
-        if (pos < source.length() && Character.isLetter(peekChar())) {
-            throw new RuntimeException("数字后不能直接跟字母 '" + peekChar() + "' 在 " + line + ":" + col);
+        String word = sb.toString();
+
+        // 规则：标识符不能以数字开头（已由入口保证，但二次确认）
+        if (Character.isDigit(word.charAt(0))) {
+            errors.add("[ERROR] Invalid identifier (cannot start with digit) | '" + word + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, word, startLine, startCol, -1, "Invalid identifier (starts with digit)"));
+            return;
         }
 
-        tokens.add(new Token(TokenType.NUMBER, sb.toString(), startLine, startCol));
+        // 规则：标识符长度不超过8位
+        if (word.length() > 8) {
+            errors.add("[ERROR] Identifier too long (max 8 chars) | '" + word + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, word, startLine, startCol, -1, "Identifier too long"));
+            return;
+        }
+
+        // 判断是否为关键字
+        boolean isKeyword = keywords.contains(word);
+        TokenType type = isKeyword ? TokenType.valueOf(word.toUpperCase()) : TokenType.IDENTIFIER;
+        int code = isKeyword ? 1 : 2;
+        String category = isKeyword ? "Keyword" : "Identifier";
+
+        tokens.add(new Token(type, word, startLine, startCol, code, category));
     }
 
-    private void readOperator() {
+    // 读取数字
+    private void readNumber(int col) {
         int startLine = line;
         int startCol = col;
-        char c = peekChar();
-        advance();
+        StringBuilder sb = new StringBuilder();
 
-        // 处理双字符运算符 <= >= != ==
-        if ((c == '<' || c == '>' || c == '!' || c == '=') && peekChar() == '=') {
-            String op = "" + c + "=";
+        // 读取数字部分
+        while (pos < source.length() && Character.isDigit(peekChar())) {
+            sb.append(peekChar());
             advance();
-            tokens.add(new Token(TokenType.OPERATOR, op, startLine, startCol));
-        } else {
-            tokens.add(new Token(TokenType.OPERATOR, String.valueOf(c), startLine, startCol));
         }
+
+        String numStr = sb.toString();
+
+        // 规则：检查数字后是否紧跟字母（非法单词，如 123abc）
+        if (pos < source.length() && (Character.isLetter(peekChar())  )) {
+            String remaining = "";
+            while (pos < source.length() && (Character.isLetterOrDigit(peekChar())  )) {
+                remaining += peekChar();
+                advance();
+            }
+            String fullErrorWord = numStr + remaining;
+            errors.add("[ERROR] Invalid word (digit followed by letter/underscore) | '" + fullErrorWord + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, fullErrorWord, startLine, startCol, -1, "Invalid word (starts with digit)"));
+            return;
+        }
+
+        // 规则：数字不能以0开头（单独的0除外）
+        if (numStr.length() > 1 && numStr.charAt(0) == '0') {
+            errors.add("[ERROR] Invalid number (cannot start with 0) | '" + numStr + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, numStr, startLine, startCol, -1, "Invalid number (starts with 0)"));
+            return;
+        }
+
+        // 规则：数字长度不超过8位
+        if (numStr.length() > 8) {
+            errors.add("[ERROR] Number too long (max 8 digits) | '" + numStr + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, numStr, startLine, startCol, -1, "Number too long"));
+            return;
+        }
+
+        // 规则：数值范围 0-99999999
+        try {
+            long value = Long.parseLong(numStr);
+            if (value > 99999999) {
+                errors.add("[ERROR] Number out of range (0-99999999) | '" + numStr + "' | at " + startLine + ":" + startCol);
+                tokens.add(new Token(TokenType.ERROR, numStr, startLine, startCol, -1, "Number out of range"));
+                return;
+            }
+        } catch (NumberFormatException e) {
+            errors.add("[ERROR] Invalid number format | '" + numStr + "' | at " + startLine + ":" + startCol);
+            tokens.add(new Token(TokenType.ERROR, numStr, startLine, startCol, -1, "Invalid number format"));
+            return;
+        }
+
+        // 合法数字
+        tokens.add(new Token(TokenType.NUMBER, numStr, startLine, startCol, 3, "Number"));
     }
 
-    private void readSeparator() {
+    // 读取运算符
+    private void readOperator(int col) {
         int startLine = line;
         int startCol = col;
         char c = peekChar();
         advance();
-        tokens.add(new Token(TokenType.SEPARATOR, String.valueOf(c), startLine, startCol));
+
+        String op;
+        if ((c == '<' || c == '>' || c == '!') && peekChar() == '=') {
+            op = "" + c + "=";
+            advance();
+        } else {
+            op = String.valueOf(c);
+        }
+
+        tokens.add(new Token(TokenType.OPERATOR, op, startLine, startCol, 4, "Operator"));
+    }
+
+    // 读取分隔符
+    private void readSeparator(int col) {
+        int startLine = line;
+        int startCol = col;
+        char c = peekChar();
+        advance();
+        tokens.add(new Token(TokenType.SEPARATOR, String.valueOf(c), startLine, startCol, 5, "Separator"));
     }
 
     private boolean isOperatorChar(char c) {

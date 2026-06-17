@@ -11,6 +11,13 @@ public class BinaryOpNode extends ASTNode {
         this.right = right;
     }
 
+    public BinaryOpNode(String op, ASTNode left, ASTNode right, int line, int column) {
+        super(line, column);
+        this.op = op;
+        this.left = left;
+        this.right = right;
+    }
+
     public String getOp() { return op; }
     public ASTNode getLeft() { return left; }
     public ASTNode getRight() { return right; }

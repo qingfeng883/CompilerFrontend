@@ -7,14 +7,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Parser {
-    private List<Token> tokens;
+    private final List<Token> tokens;
     private int pos;
     private Token currentToken;
+    private final List<String> errors;
+    private boolean hasError;
 
     public Parser(List<Token> tokens) {
         this.tokens = tokens;
         this.pos = 0;
-        this.currentToken = peek();
+        this.errors = new ArrayList<>();
+        this.hasError = false;
+        if (!tokens.isEmpty()) {
+            this.currentToken = tokens.get(0);
+        } else {
+            this.currentToken = null;
+        }
     }
 
     private Token peek() {
@@ -33,23 +41,34 @@ public class Parser {
 
     private Token consume(TokenType expected) {
         Token t = currentToken;
-        if (t == null) throw new RuntimeException("Unexpected EOF, expected " + expected);
+        if (t == null) {
+            addError("Unexpected EOF, expected " + expected);
+            return createErrorToken(expected);
+        }
         if (t.getType() == expected) {
             advance();
             return t;
         }
-        throw new RuntimeException("Expected " + expected + " but got " + t.getType() +
-                " at " + t.getLine() + ":" + t.getColumn());
+        addError("Expected " + expected + " but got " + t.getType() +
+                " ('" + t.getValue() + "') at " + t.getLine() + ":" + t.getColumn());
+        advance();
+        return createErrorToken(expected);
     }
 
     private Token consume(TokenType expected, String value) {
         Token t = currentToken;
-        if (t == null) throw new RuntimeException("Unexpected EOF");
+        if (t == null) {
+            addError("Unexpected EOF, expected " + expected + "(" + value + ")");
+            return createErrorToken(expected);
+        }
         if (t.getType() == expected && t.getValue().equals(value)) {
             advance();
             return t;
         }
-        throw new RuntimeException("Expected " + expected + "(" + value + ") but got " + t);
+        addError("Expected " + expected + "(" + value + ") but got " + t.getType() +
+                " ('" + t.getValue() + "') at " + t.getLine() + ":" + t.getColumn());
+        advance();
+        return createErrorToken(expected);
     }
 
     private boolean match(TokenType type) {
@@ -61,195 +80,293 @@ public class Parser {
                 currentToken.getValue().equals(value);
     }
 
-    // program → block
-    public ASTNode parse() {
-        return parseBlock();
+    private void addError(String message) {
+        errors.add("[ERROR] " + message);
+        hasError = true;
     }
 
-    // block → { stmts }
-    private BlockNode parseBlock() {
-        consume(TokenType.SEPARATOR, "{");
-        List<ASTNode> stmts = parseStmts();
-        consume(TokenType.SEPARATOR, "}");
-        return new BlockNode(stmts);
+    private Token createErrorToken(TokenType type) {
+        return new Token(type, "ERROR", -1, -1, -1, "Error token");
     }
 
-    // stmts → stmt stmts | ε
-    private List<ASTNode> parseStmts() {
-        List<ASTNode> stmts = new ArrayList<>();
-        while (!match(TokenType.SEPARATOR, "}") && !match(TokenType.EOF)) {
-            stmts.add(parseStmt());
+    private void synchronize() {
+        while (currentToken != null && !match(TokenType.EOF)) {
+            if (match(TokenType.SEPARATOR, ";") ||
+                    match(TokenType.SEPARATOR, "}") ||
+                    match(TokenType.IF) ||
+                    match(TokenType.WHILE) ||
+                    match(TokenType.IDENTIFIER)) {
+                return;
+            }
+            advance();
         }
-        return stmts;
-    }
-
-    // stmt → declaration | assignment | if_stmt | while_stmt | block
-    private ASTNode parseStmt() {
-        // 类型声明 (int, float, string, bool)
-        if (isType()) {
-            return parseDeclaration();
-        }
-        // if 语句
-        else if (match(TokenType.IF)) {
-            return parseIfStmt();
-        }
-        // while 语句
-        else if (match(TokenType.WHILE)) {
-            return parseWhileStmt();
-        }
-        // 代码块
-        else if (match(TokenType.SEPARATOR, "{")) {
-            return parseBlock();
-        }
-        // 赋值语句 (必须以 ID 开头)
-        else if (match(TokenType.IDENTIFIER)) {
-            return parseAssignment();
-        }
-        else {
-            throw new RuntimeException("Unexpected token: " + currentToken);
-        }
-    }
-
-    // 判断是否为类型关键字
-    private boolean isType() {
-        if (currentToken == null) return false;
-        String value = currentToken.getValue();
-        return value.equals("int") || value.equals("float") ||
-                value.equals("string") || value.equals("bool");
-    }
-
-    // declaration → type id ; | type id = expr ;
-    private DeclarationNode parseDeclaration() {
-        String type = currentToken.getValue();
-        consume(TokenType.IDENTIFIER);  // 消费类型关键字
-
-        String id = currentToken.getValue();
-        consume(TokenType.IDENTIFIER);
-
-        ASTNode initExpr = null;
-        if (match(TokenType.OPERATOR, "=")) {
-            consume(TokenType.OPERATOR, "=");
-            initExpr = parseExpr();
-        }
-
-        consume(TokenType.SEPARATOR, ";");
-        return new DeclarationNode(type, id, initExpr);
-    }
-
-    // assignment → id = expr ;
-    private AssignNode parseAssignment() {
-        String id = currentToken.getValue();
-        consume(TokenType.IDENTIFIER);
-        consume(TokenType.OPERATOR, "=");
-        ASTNode expr = parseExpr();
-        consume(TokenType.SEPARATOR, ";");
-        return new AssignNode(id, expr);
-    }
-
-    // if_stmt → if ( bool ) stmt | if ( bool ) stmt else stmt
-    private IfNode parseIfStmt() {
-        consume(TokenType.IF);
-        consume(TokenType.SEPARATOR, "(");
-        ASTNode cond = parseBool();
-        consume(TokenType.SEPARATOR, ")");
-        ASTNode thenStmt = parseStmt();
-        ASTNode elseStmt = null;
-        if (match(TokenType.ELSE)) {
-            consume(TokenType.ELSE);
-            elseStmt = parseStmt();
-        }
-        return new IfNode(cond, thenStmt, elseStmt);
-    }
-
-    // while_stmt → while ( bool ) stmt
-    private WhileNode parseWhileStmt() {
-        consume(TokenType.WHILE);
-        consume(TokenType.SEPARATOR, "(");
-        ASTNode cond = parseBool();
-        consume(TokenType.SEPARATOR, ")");
-        ASTNode body = parseStmt();
-        return new WhileNode(cond, body);
-    }
-
-    // bool → expr rel_op expr | expr
-    private ASTNode parseBool() {
-        ASTNode left = parseExpr();
-        if (isRelOp()) {
-            String op = currentToken.getValue();
-            consume(TokenType.OPERATOR);
-            ASTNode right = parseExpr();
-            return new BinaryOpNode(op, left, right);
-        }
-        return left;
     }
 
     private boolean isRelOp() {
         if (currentToken == null) return false;
         String op = currentToken.getValue();
-        return op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=");
+        return op.equals("<") || op.equals("<=") ||
+                op.equals(">") || op.equals(">=");
     }
 
-    // expr → term expr_tail (消除左递归)
+    // ============ 解析方法 ============
+
+    public ASTNode parse() {
+        ASTNode node = parseBlock();
+        if (currentToken != null && !match(TokenType.EOF)) {
+            addError("Unexpected token after program: " + currentToken.getValue() +
+                    " at " + currentToken.getLine() + ":" + currentToken.getColumn());
+        }
+        return node;
+    }
+
+    private BlockNode parseBlock() {
+        int line = currentToken != null ? currentToken.getLine() : -1;
+        int col = currentToken != null ? currentToken.getColumn() : -1;
+
+        try {
+            consume(TokenType.SEPARATOR, "{");
+            List<ASTNode> stmts = parseStmts();
+            consume(TokenType.SEPARATOR, "}");
+            return new BlockNode(stmts, line, col);
+        } catch (RuntimeException e) {
+            synchronize();
+            return new BlockNode(new ArrayList<>(), line, col);
+        }
+    }
+
+    private List<ASTNode> parseStmts() {
+        List<ASTNode> stmts = new ArrayList<>();
+
+        while (currentToken != null &&
+                !match(TokenType.SEPARATOR, "}") &&
+                !match(TokenType.EOF)) {
+            try {
+                ASTNode stmt = parseStmt();
+                if (stmt != null) {
+                    stmts.add(stmt);
+                }
+            } catch (RuntimeException e) {
+                addError("Error parsing statement: " + e.getMessage());
+                synchronize();
+                if (match(TokenType.SEPARATOR, ";")) {
+                    advance();
+                }
+            }
+        }
+        return stmts;
+    }
+
+    private ASTNode parseStmt() {
+        if (currentToken == null) {
+            return null;
+        }
+
+        if (match(TokenType.SEPARATOR, "{")) {
+            return parseBlock();
+        }
+
+        if (match(TokenType.IF)) {
+            return parseIfStmt();
+        }
+
+        if (match(TokenType.WHILE)) {
+            return parseWhileStmt();
+        }
+
+        if (match(TokenType.IDENTIFIER)) {
+            return parseAssignment();
+        }
+
+        if (match(TokenType.SEPARATOR, ";")) {
+            advance();
+            return null;
+        }
+
+        if (currentToken != null) {
+            addError("Unexpected token in statement: " + currentToken.getType() +
+                    " ('" + currentToken.getValue() + "') at " +
+                    currentToken.getLine() + ":" + currentToken.getColumn());
+            advance();
+            return null;
+        }
+
+        return null;
+    }
+
+    private AssignNode parseAssignment() {
+        int line = currentToken.getLine();
+        int col = currentToken.getColumn();
+        String id = currentToken.getValue();
+        consume(TokenType.IDENTIFIER);
+
+        if (!match(TokenType.OPERATOR, "=")) {
+            addError("Expected '=' in assignment at " + line + ":" + col);
+            if (match(TokenType.SEPARATOR, ";") || match(TokenType.SEPARATOR, "}")) {
+                return new AssignNode(id, new NumberNode(0, line, col), line, col);
+            }
+        }
+
+        consume(TokenType.OPERATOR, "=");
+        ASTNode expr = parseExpr();
+
+        if (!match(TokenType.SEPARATOR, ";")) {
+            addError("Expected ';' after assignment at " +
+                    (currentToken != null ? currentToken.getLine() : "EOF") +
+                    ":" + (currentToken != null ? currentToken.getColumn() : 0));
+        }
+        consume(TokenType.SEPARATOR, ";");
+
+        return new AssignNode(id, expr, line, col);
+    }
+
+    private IfNode parseIfStmt() {
+        int line = currentToken.getLine();
+        int col = currentToken.getColumn();
+        consume(TokenType.IF);
+
+        consume(TokenType.SEPARATOR, "(");
+        ASTNode cond = parseBool();
+        consume(TokenType.SEPARATOR, ")");
+
+        ASTNode thenStmt = parseStmt();
+        ASTNode elseStmt = null;
+
+        if (match(TokenType.ELSE)) {
+            consume(TokenType.ELSE);
+            elseStmt = parseStmt();
+        }
+
+        return new IfNode(cond, thenStmt, elseStmt, line, col);
+    }
+
+    private WhileNode parseWhileStmt() {
+        int line = currentToken.getLine();
+        int col = currentToken.getColumn();
+        consume(TokenType.WHILE);
+
+        consume(TokenType.SEPARATOR, "(");
+        ASTNode cond = parseBool();
+        consume(TokenType.SEPARATOR, ")");
+
+        ASTNode body = parseStmt();
+
+        return new WhileNode(cond, body, line, col);
+    }
+
+    private ASTNode parseBool() {
+        ASTNode left = parseExpr();
+
+        if (isRelOp()) {
+            String op = currentToken.getValue();
+            int line = currentToken.getLine();
+            int col = currentToken.getColumn();
+            consume(TokenType.OPERATOR);
+            ASTNode right = parseExpr();
+            return new BinaryOpNode(op, left, right, line, col);
+        }
+
+        return left;
+    }
+
     private ASTNode parseExpr() {
         ASTNode node = parseTerm();
-        return parseExprTail(node);
-    }
 
-    // expr_tail → + term expr_tail | - term expr_tail | ε
-    private ASTNode parseExprTail(ASTNode left) {
-        if (match(TokenType.OPERATOR)) {
+        while (match(TokenType.OPERATOR)) {
             String op = currentToken.getValue();
             if (op.equals("+") || op.equals("-")) {
+                int line = currentToken.getLine();
+                int col = currentToken.getColumn();
                 consume(TokenType.OPERATOR);
                 ASTNode right = parseTerm();
-                ASTNode newNode = new BinaryOpNode(op, left, right);
-                return parseExprTail(newNode);
+                node = new BinaryOpNode(op, node, right, line, col);
+            } else {
+                break;
             }
         }
-        return left;
+
+        return node;
     }
 
-    // term → factor term_tail (消除左递归)
     private ASTNode parseTerm() {
         ASTNode node = parseFactor();
-        return parseTermTail(node);
-    }
 
-    // term_tail → * factor term_tail | / factor term_tail | ε
-    private ASTNode parseTermTail(ASTNode left) {
-        if (match(TokenType.OPERATOR)) {
+        while (match(TokenType.OPERATOR)) {
             String op = currentToken.getValue();
             if (op.equals("*") || op.equals("/")) {
+                int line = currentToken.getLine();
+                int col = currentToken.getColumn();
                 consume(TokenType.OPERATOR);
                 ASTNode right = parseFactor();
-                ASTNode newNode = new BinaryOpNode(op, left, right);
-                return parseTermTail(newNode);
+                node = new BinaryOpNode(op, node, right, line, col);
+            } else {
+                break;
             }
         }
-        return left;
+
+        return node;
     }
 
-    // factor → ( expr ) | ID | NUM
     private ASTNode parseFactor() {
         if (match(TokenType.SEPARATOR, "(")) {
+            int line = currentToken.getLine();
+            int col = currentToken.getColumn();
             consume(TokenType.SEPARATOR, "(");
             ASTNode node = parseExpr();
             consume(TokenType.SEPARATOR, ")");
             return node;
-        } else if (match(TokenType.NUMBER)) {
-            Token num = consume(TokenType.NUMBER);
-            // 支持浮点数
-            String numStr = num.getValue();
-            if (numStr.contains(".")) {
-                return new NumberNode(Float.parseFloat(numStr));
-            } else {
-                return new NumberNode(Integer.parseInt(numStr));
-            }
-        } else if (match(TokenType.IDENTIFIER)) {
-            Token id = consume(TokenType.IDENTIFIER);
-            return new IdNode(id.getValue());
-        } else {
-            throw new RuntimeException("Unexpected token in factor: " + currentToken);
         }
+
+        if (match(TokenType.NUMBER)) {
+            Token num = consume(TokenType.NUMBER);
+            try {
+                int value = Integer.parseInt(num.getValue());
+                return new NumberNode(value, num.getLine(), num.getColumn());
+            } catch (NumberFormatException e) {
+                addError("Invalid number format: " + num.getValue() +
+                        " at " + num.getLine() + ":" + num.getColumn());
+                return new NumberNode(0, num.getLine(), num.getColumn());
+            }
+        }
+
+        if (match(TokenType.IDENTIFIER)) {
+            Token id = consume(TokenType.IDENTIFIER);
+            return new IdNode(id.getValue(), id.getLine(), id.getColumn());
+        }
+
+        if (currentToken != null) {
+            addError("Unexpected token in factor: " + currentToken.getType() +
+                    " ('" + currentToken.getValue() + "') at " +
+                    currentToken.getLine() + ":" + currentToken.getColumn());
+            advance();
+            return new NumberNode(0, -1, -1);
+        }
+
+        addError("Unexpected end of input in factor");
+        return new NumberNode(0, -1, -1);
+    }
+
+    // ============ 公开接口 ============
+
+    public List<String> getErrors() {
+        return errors;
+    }
+
+    public boolean hasErrors() {
+        return hasError || !errors.isEmpty();
+    }
+
+    public void printErrors() {
+        for (String error : errors) {
+            System.err.println(error);
+        }
+    }
+
+    public int getPosition() {
+        return pos;
+    }
+
+    public Token getCurrentToken() {
+        return currentToken;
     }
 }

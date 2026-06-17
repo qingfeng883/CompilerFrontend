@@ -9,6 +9,11 @@ public class BlockNode extends ASTNode {
         this.statements = statements;
     }
 
+    public BlockNode(List<ASTNode> statements, int line, int column) {
+        super(line, column);
+        this.statements = statements;
+    }
+
     public List<ASTNode> getStatements() {
         return statements;
     }

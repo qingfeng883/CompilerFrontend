@@ -13,6 +13,12 @@ public class CodeGenerator {
         quadruples.clear();
         tempCounter = 0;
         generateNode(root);
+        // 添加 end 四元式表示程序结束
+        quadruples.add(new Quadruple("end", "", "", ""));
+        // 设置每条四元式的行号（从1开始）
+        for (int i = 0; i < quadruples.size(); i++) {
+            quadruples.get(i).setLineNumber(i + 1);
+        }
         return quadruples;
     }
 
@@ -31,27 +37,74 @@ public class CodeGenerator {
             quadruples.add(new Quadruple("=", exprResult, "", assign.getId()));
         } else if (node instanceof IfNode) {
             IfNode ifNode = (IfNode) node;
+
+            // 生成条件表达式
             String condResult = generateCond(ifNode.getCondition());
-            String elseLabel = "L" + tempCounter++;
-            String endLabel = "L" + tempCounter++;
-            quadruples.add(new Quadruple("if", condResult, "goto", elseLabel));
+
+            // 记录条件跳转的位置
+            int falseJumpIndex = quadruples.size();
+            quadruples.add(new Quadruple("if_false", condResult, "", "0"));
+
+            // 生成 then 分支代码
             generateNode(ifNode.getThenStmt());
-            quadruples.add(new Quadruple("goto", "", "", endLabel));
-            quadruples.add(new Quadruple("label", "", "", elseLabel));
+
+            // 记录无条件跳转的位置
+            int gotoIndex = quadruples.size();
+            quadruples.add(new Quadruple("goto", "", "", "0"));
+
+            // 确定 else 分支开始的行号
+            int elseTarget = quadruples.size() + 1;
+
+            // 生成 else 分支代码
             if (ifNode.getElseStmt() != null) {
                 generateNode(ifNode.getElseStmt());
             }
-            quadruples.add(new Quadruple("label", "", "", endLabel));
+
+            // 确定 end 的行号
+            int endTarget = quadruples.size() + 1;
+
+            // 回填条件跳转
+            if (ifNode.getElseStmt() != null) {
+                Quadruple jumpQuad = quadruples.get(falseJumpIndex);
+                quadruples.set(falseJumpIndex,
+                        new Quadruple("if_false", jumpQuad.getArg1(), "", String.valueOf(elseTarget)));
+            } else {
+                Quadruple jumpQuad = quadruples.get(falseJumpIndex);
+                quadruples.set(falseJumpIndex,
+                        new Quadruple("if_false", jumpQuad.getArg1(), "", String.valueOf(endTarget)));
+            }
+
+            // 回填无条件跳转
+            Quadruple gotoQuad = quadruples.get(gotoIndex);
+            quadruples.set(gotoIndex,
+                    new Quadruple("goto", "", "", String.valueOf(endTarget)));
+
         } else if (node instanceof WhileNode) {
             WhileNode whileNode = (WhileNode) node;
-            String startLabel = "L" + tempCounter++;
-            String endLabel = "L" + tempCounter++;
-            quadruples.add(new Quadruple("label", "", "", startLabel));
+
+            // 记录循环开始位置（显示行号）
+            int startLine = quadruples.size() + 1;
+
+            // 生成条件表达式
             String condResult = generateCond(whileNode.getCondition());
-            quadruples.add(new Quadruple("if", condResult, "goto", endLabel));
+
+            // 记录条件跳转的位置
+            int falseJumpIndex = quadruples.size();
+            quadruples.add(new Quadruple("if_false", condResult, "", "0"));
+
+            // 生成循环体
             generateNode(whileNode.getBody());
-            quadruples.add(new Quadruple("goto", "", "", startLabel));
-            quadruples.add(new Quadruple("label", "", "", endLabel));
+
+            // 无条件跳转到循环开始
+            quadruples.add(new Quadruple("goto", "", "", String.valueOf(startLine)));
+
+            // 回填条件跳转（条件为假时跳出循环）
+            // end 在 goto 之后，即当前列表大小 + 1
+            int endTarget = quadruples.size() + 1;
+            Quadruple jumpQuad = quadruples.get(falseJumpIndex);
+            quadruples.set(falseJumpIndex,
+                    new Quadruple("if_false", jumpQuad.getArg1(), "", String.valueOf(endTarget)));
+
         } else if (node instanceof BinaryOpNode) {
             // 表达式节点在 generateExpr 中处理
         } else if (node instanceof NumberNode || node instanceof IdNode) {
@@ -70,7 +123,10 @@ public class CodeGenerator {
             quadruples.add(new Quadruple(bin.getOp(), left, right, temp));
             return temp;
         } else if (node instanceof NumberNode) {
-            return ((NumberNode) node).getValue() + "";
+
+            int value = ((NumberNode) node).getIntValue() ;
+
+            return String.valueOf(value);
         } else if (node instanceof IdNode) {
             return ((IdNode) node).getName();
         } else {
@@ -82,7 +138,8 @@ public class CodeGenerator {
         if (node instanceof BinaryOpNode) {
             BinaryOpNode bin = (BinaryOpNode) node;
             String op = bin.getOp();
-            if (op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=")) {
+            if (op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=")
+                    || op.equals("==") || op.equals("!=")) {
                 String left = generateExpr(bin.getLeft());
                 String right = generateExpr(bin.getRight());
                 String temp = newTemp();
@@ -90,7 +147,6 @@ public class CodeGenerator {
                 return temp;
             }
         }
-        // 普通表达式作为条件（非零为真）
         return generateExpr(node);
     }
 }

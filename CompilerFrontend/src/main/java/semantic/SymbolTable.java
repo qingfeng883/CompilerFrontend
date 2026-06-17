@@ -3,79 +3,89 @@ package semantic;
 import java.util.*;
 
 public class SymbolTable {
-    private Stack<Map<String, Symbol>> scopes = new Stack<>();
+    private Map<String, Symbol> symbols;
 
     public SymbolTable() {
-        enterScope();
+        this.symbols = new LinkedHashMap<>();
     }
 
-    public void enterScope() {
-        scopes.push(new HashMap<>());
-        System.out.println("[符号表] 进入新作用域，当前作用域深度: " + scopes.size());
-    }
-
-    public void exitScope() {
-        Map<String, Symbol> exiting = scopes.pop();
-        System.out.println("[符号表] 退出作用域，移除变量: " + exiting.keySet());
-    }
-
-    // 完整参数版本
-    public void declare(String name, String type, int line) {
-        Map<String, Symbol> current = scopes.peek();
-        if (current.containsKey(name)) {
-            throw new RuntimeException("变量 '" + name + "' 已在当前作用域声明");
-        }
-        Symbol sym = new Symbol(name, type, line);
-        current.put(name, sym);
-        System.out.println("[符号表] 声明变量: " + name + " : " + type);
-    }
-
-    // 简化版本（无行号）
-    public void declare(String name, String type) {
-        declare(name, type, -1);
-    }
-
-    public Symbol lookup(String name) {
-        for (int i = scopes.size() - 1; i >= 0; i--) {
-            Symbol sym = scopes.get(i).get(name);
-            if (sym != null) {
-                System.out.println("[符号表] 查找变量: " + name + " -> 找到");
-                return sym;
-            }
-        }
-        System.out.println("[符号表] 查找变量: " + name + " -> 未找到");
-        return null;
-    }
-
-    public void checkDeclared(String name, int line) {
-        if (lookup(name) == null) {
-            throw new RuntimeException("变量 '" + name + "' 在第 " + line + " 行未声明");
+    /**
+     * 声明或更新变量
+     */
+    public void put(String name, Object value) {
+        if (symbols.containsKey(name)) {
+            symbols.get(name).setValue(value);
+        } else {
+            symbols.put(name, new Symbol(name, value));
         }
     }
 
+    /**
+     * 查找变量
+     */
+    public Symbol get(String name) {
+        return symbols.get(name);
+    }
+
+    /**
+     * 判断变量是否存在
+     */
+    public boolean contains(String name) {
+        return symbols.containsKey(name);
+    }
+
+    /**
+     * 获取所有符号
+     */
     public List<Symbol> getAllSymbols() {
-        List<Symbol> all = new ArrayList<>();
-        Set<String> added = new HashSet<>();
-        for (Map<String, Symbol> scope : scopes) {
-            for (Symbol sym : scope.values()) {
-                if (!added.contains(sym.getName())) {
-                    added.add(sym.getName());
-                    all.add(sym);
-                }
-            }
+        return new ArrayList<>(symbols.values());
+    }
+
+    /**
+     * 获取变量值
+     */
+    public Object getValue(String name) {
+        Symbol sym = symbols.get(name);
+        return sym != null ? sym.getValue() : null;
+    }
+
+    /**
+     * 设置变量值
+     */
+    public void setValue(String name, Object value) {
+        if (symbols.containsKey(name)) {
+            symbols.get(name).setValue(value);
+        } else {
+            symbols.put(name, new Symbol(name, value));
         }
-        return all;
     }
 
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        for (Symbol sym : getAllSymbols()) {
-            sb.append(sym).append("\n");
+        sb.append("========== 符号表 ==========\n");
+        for (Symbol sym : symbols.values()) {
+            sb.append("  ").append(sym).append("\n");
         }
-        if (sb.length() == 0) {
-            sb.append("(空符号表)");
+        if (symbols.isEmpty()) {
+            sb.append("  (空)\n");
         }
+        sb.append("=============================");
         return sb.toString();
+    }
+
+    /**
+     * 导出为表格数据（用于UI显示）
+     */
+    public String[][] toTableData() {
+        List<Symbol> all = getAllSymbols();
+        String[][] data = new String[all.size()][2];
+        for (int i = 0; i < all.size(); i++) {
+            Symbol sym = all.get(i);
+            data[i][0] = sym.getName();
+            Object val = sym.getValue();
+            data[i][1] = val != null ? val.toString() : "";
+        }
+        return data;
     }
 }
