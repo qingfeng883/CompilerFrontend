@@ -169,6 +169,7 @@ public class Lexer {
                 advance();
             }
         }
+         errors.add("[ERROR] Unclosed multi-line comment at end of file");
     }
 
     // 读取标识符或关键字
