@@ -155,21 +155,18 @@ public class Lexer {
         }
     }
 
-    // 跳过多行注释 /* */
+     // 跳过多行注释 /* */
     private void skipMultiLineComment() {
         advance(); advance();
         while (pos < source.length()) {
             if (peekChar() == '*' && peekNextChar() == '/') {
                 advance(); advance();
-                break;
+                return;
             }
-            if (peekChar() == '\n') {
-                advance();
-            } else {
-                advance();
-            }
+            advance();
         }
-         errors.add("[ERROR] Unclosed multi-line comment at end of file");
+        // 到达文件末尾，注释未闭合
+        errors.add("[ERROR] Unclosed multi-line comment at end of file");
     }
 
     // 读取标识符或关键字
