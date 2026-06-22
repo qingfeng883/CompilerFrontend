@@ -58,7 +58,7 @@ public class Lexer {
                 int currentWordCol = wordCol;
                 int currentLine = line;
 
-                // 标识符：字母或下划线开头
+                // 标识符：字母开头
                 if (Character.isLetter(current)) {
                     readIdentifierOrKeyword(currentWordCol);
                 }
@@ -75,12 +75,35 @@ public class Lexer {
                     readSeparator(currentWordCol);
                 }
                 // 非法字符
+                // 在 tokenize() 方法中，修改处理非法字符的 else 分支
                 else {
-                    String illegalChar = String.valueOf(current);
-                    errors.add("[ERROR] Illegal character | '" + illegalChar + "' | at " + line + ":" + currentWordCol);
-                    tokens.add(new Token(TokenType.ERROR, illegalChar, line, currentWordCol, -1, "Illegal character"));
+                    // 处理非法字符，并将后续的字母数字一起读取作为整体错误
+                    int illegalStartCol = wordCol;
+                    int illegalStartLine = line;
+                    StringBuilder errorWord = new StringBuilder();
+                    errorWord.append(current);
                     advance();
                     wordCol++;
+
+                    // 继续读取后续的字母、数字，直到遇到运算符、界符、空白符
+                    while (pos < source.length()) {
+                        char c = peekChar();
+                        if (Character.isLetterOrDigit(c)) {
+                            errorWord.append(c);
+                            advance();
+                        } else if (!isOperatorChar(c) && !isSeparatorChar(c) && !Character.isWhitespace(c)) {
+                            // 如果遇到其他非法字符（如下划线），也包含进来
+                            errorWord.append(c);
+                            advance();
+                        } else {
+                            // 遇到运算符、界符、空白符，停止读取
+                            break;
+                        }
+                    }
+
+                    String fullError = errorWord.toString();
+                    errors.add("[ERROR] Illegal character in identifier | '" + fullError + "' | at " + illegalStartLine + ":" + illegalStartCol);
+                    tokens.add(new Token(TokenType.ERROR, fullError, illegalStartLine, illegalStartCol, -1, "Illegal character in identifier"));
                 }
 
             } catch (RuntimeException e) {
@@ -161,14 +184,12 @@ public class Lexer {
         while (pos < source.length()) {
             if (peekChar() == '*' && peekNextChar() == '/') {
                 advance(); advance();
-                break;
+                return;
             }
-            if (peekChar() == '\n') {
-                advance();
-            } else {
-                advance();
-            }
+            advance();
         }
+        // 到达文件末尾，注释未闭合
+        errors.add("[ERROR] Unclosed multi-line comment at end of file");
     }
 
     // 读取标识符或关键字
@@ -177,14 +198,43 @@ public class Lexer {
         int startCol = col;
         StringBuilder sb = new StringBuilder();
 
-        // 读取字母、数字
-        while (pos < source.length() &&
-                (Character.isLetterOrDigit(peekChar())  )) {
-            sb.append(peekChar());
-            advance();
+        // 读取字母、数字，遇到非法字符（如下划线、@等）时继续读取以便整体报错
+        while (pos < source.length()) {
+            char c = peekChar();
+            // 如果是字母或数字，正常读取
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+                advance();
+            }
+            // 如果是下划线或其他非法字符（不是运算符、界符、空白符）
+            else if (!isOperatorChar(c) && !isSeparatorChar(c) && !Character.isWhitespace(c)) {
+                // 继续读取，将整个非法标识符作为一个整体报错
+                while (pos < source.length()) {
+                    char nextChar = peekChar();
+                    // 遇到运算符、界符、空白符时停止
+                    if (isOperatorChar(nextChar) || isSeparatorChar(nextChar) || Character.isWhitespace(nextChar)) {
+                        break;
+                    }
+                    sb.append(nextChar);
+                    advance();
+                }
+                // 报错：非法字符
+                errors.add("[ERROR] Invalid character in identifier | '" + sb.toString() + "' | at " + startLine + ":" + startCol);
+                tokens.add(new Token(TokenType.ERROR, sb.toString(), startLine, startCol, -1, "Invalid character in identifier"));
+                return;
+            }
+            // 遇到运算符、界符、空白符，停止读取
+            else {
+                break;
+            }
         }
 
         String word = sb.toString();
+
+        // 如果word为空（理论上不应该发生）
+        if (word.isEmpty()) {
+            return;
+        }
 
         // 规则：标识符不能以数字开头（已由入口保证，但二次确认）
         if (Character.isDigit(word.charAt(0))) {
@@ -208,7 +258,6 @@ public class Lexer {
 
         tokens.add(new Token(type, word, startLine, startCol, code, category));
     }
-
     // 读取数字
     private void readNumber(int col) {
         int startLine = line;

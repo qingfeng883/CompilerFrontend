@@ -27,9 +27,9 @@ public class Quadruple {
 
     @Override
     public String toString() {
-//        if (lineNumber >= 0) {
-//            return "(" + lineNumber + ") " + op + ", " + arg1 + ", " + arg2 + ", " + result;
-//        }
+        if (lineNumber >= 0) {
+            return lineNumber +  "  (" + op + ", " + arg1 + ", " + arg2 + ", " + result+ ") ";
+        }
         return "(" + op + ", " + arg1 + ", " + arg2 + ", " + result + ")";
     }
 }
