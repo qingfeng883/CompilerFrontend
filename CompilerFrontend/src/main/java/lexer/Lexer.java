@@ -178,7 +178,7 @@ public class Lexer {
         }
     }
 
-    // 跳过多行注释 /* */
+     // 跳过多行注释 /* */
     private void skipMultiLineComment() {
         advance(); advance();
         while (pos < source.length()) {
