@@ -15,11 +15,25 @@ public class Quadruple {
         this.lineNumber = -1;
     }
 
-    public String getOp() { return op; }
-    public String getArg1() { return arg1; }
-    public String getArg2() { return arg2; }
-    public String getResult() { return result; }
-    public int getLineNumber() { return lineNumber; }
+    public String getOp() {
+        return op;
+    }
+
+    public String getArg1() {
+        return arg1;
+    }
+
+    public String getArg2() {
+        return arg2;
+    }
+
+    public String getResult() {
+        return result;
+    }
+
+    public int getLineNumber() {
+        return lineNumber;
+    }
 
     public void setLineNumber(int lineNumber) {
         this.lineNumber = lineNumber;
@@ -27,9 +41,10 @@ public class Quadruple {
 
     @Override
 
-   public String toString() {
+    public String toString() {
         if (lineNumber >= 0) {
-            return lineNumber +  "  (" + op + ", " + arg1 + ", " + arg2 + ", " + result+ ") ";
+            return lineNumber + "  (" + op + ", " + arg1 + ", " + arg2 + ", " + result + ") ";
         }
         return "(" + op + ", " + arg1 + ", " + arg2 + ", " + result + ")";
     }
+}

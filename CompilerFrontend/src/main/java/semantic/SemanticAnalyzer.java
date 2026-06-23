@@ -71,7 +71,8 @@ public class SemanticAnalyzer {
         System.out.println("[语义分析] 赋值: " + varName + " = ...");
 
         if (!symTable.contains(varName)) {
-            symTable.put(varName, null);
+            // 声明变量时指定类型为 int
+            symTable.put(varName, "int", null);
         }
 
         Object result = evaluate(assign.getExpr());
