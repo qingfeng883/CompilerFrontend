@@ -21,6 +21,19 @@ public class SymbolTable {
     }
 
     /**
+     * 声明或更新变量（带类型）
+     */
+    public void put(String name, String type, Object value) {
+        if (symbols.containsKey(name)) {
+            Symbol sym = symbols.get(name);
+            sym.setType(type);
+            sym.setValue(value);
+        } else {
+            symbols.put(name, new Symbol(name, type, value));
+        }
+    }
+
+    /**
      * 查找变量
      */
     public Symbol get(String name) {
@@ -75,16 +88,17 @@ public class SymbolTable {
     }
 
     /**
-     * 导出为表格数据（用于UI显示）
+     * 导出为表格数据（用于UI显示）- 包含类型列
      */
     public String[][] toTableData() {
         List<Symbol> all = getAllSymbols();
-        String[][] data = new String[all.size()][2];
+        String[][] data = new String[all.size()][3];  // 3列: 变量名, 类型, 值
         for (int i = 0; i < all.size(); i++) {
             Symbol sym = all.get(i);
             data[i][0] = sym.getName();
+            data[i][1] = sym.getType() != null ? sym.getType() : "int";
             Object val = sym.getValue();
-            data[i][1] = val != null ? val.toString() : "";
+            data[i][2] = val != null ? val.toString() : "";
         }
         return data;
     }

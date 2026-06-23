@@ -436,8 +436,8 @@ public class MainFrame extends JFrame {
         treeScroll.getViewport().setBackground(Color.WHITE);
         tabbedPane.addTab("AST 树", treeScroll);
 
-        // 符号表表格 - 精简版：只显示变量名和值
-        symbolModel = new DefaultTableModel(new String[]{"变量名", "值"}, 0) {
+        // 符号表表格 - 显示变量名、类型和值
+        symbolModel = new DefaultTableModel(new String[]{"变量名", "类型", "值"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -447,8 +447,9 @@ public class MainFrame extends JFrame {
         symbolTable.setFont(monospaceFont);
         symbolTable.getTableHeader().setFont(chineseBoldFont);
         symbolTable.setRowHeight(25);
-        symbolTable.getColumnModel().getColumn(0).setPreferredWidth(150);
-        symbolTable.getColumnModel().getColumn(1).setPreferredWidth(200);
+        symbolTable.getColumnModel().getColumn(0).setPreferredWidth(120);
+        symbolTable.getColumnModel().getColumn(1).setPreferredWidth(80);
+        symbolTable.getColumnModel().getColumn(2).setPreferredWidth(200);
 
         DefaultTableCellRenderer symbolRenderer = new DefaultTableCellRenderer();
         symbolRenderer.setFont(monospaceFont);
@@ -700,10 +701,11 @@ public class MainFrame extends JFrame {
                 System.out.println("  " + sym);
             }
 
-            // 显示到UI
+            // 显示到UI - 包含类型
             for (Symbol sym : symbols) {
                 symbolModel.addRow(new Object[]{
                         sym.getName(),
+                        sym.getType() != null ? sym.getType() : "int",
                         sym.getValue() != null ? sym.getValue().toString() : "NULL"
                 });
             }
