@@ -70,19 +70,15 @@ public class SemanticAnalyzer {
         String varName = assign.getId();
         System.out.println("[语义分析] 赋值: " + varName + " = ...");
 
-        // 1. 先确保变量在符号表中（无论能否计算）
         if (!symTable.contains(varName)) {
             symTable.put(varName, null);
         }
 
-        // 2. 尝试计算表达式的值
         Object result = evaluate(assign.getExpr());
 
-        // 3. 如果计算结果不为 null，更新变量值
         if (result != null) {
             symTable.put(varName, result);
         }
-        // 如果 result 为 null，变量保持 null（未赋值/无法计算）
 
         System.out.println("[语义分析] " + varName + " = " + (result != null ? result : "无法计算/未赋值"));
     }
@@ -90,11 +86,9 @@ public class SemanticAnalyzer {
     private void visitIf(IfNode ifNode) {
         System.out.println("[语义分析] if 语句");
 
-        // 计算条件值（用于判断执行路径）
         Object condResult = evaluate(ifNode.getCondition());
         System.out.println("[语义分析] 条件值: " + condResult);
 
-        // 语义分析：两个分支都要分析（收集变量声明）
         System.out.println("[语义分析] 分析 then 分支");
         if (ifNode.getThenStmt() != null) {
             visit(ifNode.getThenStmt());
@@ -109,7 +103,6 @@ public class SemanticAnalyzer {
     private void visitWhile(WhileNode whileNode) {
         System.out.println("[语义分析] while 循环");
 
-        // 最多执行100次防止死循环
         int maxIterations = 100;
         int count = 0;
 
@@ -144,17 +137,12 @@ public class SemanticAnalyzer {
         String varName = id.getName();
         System.out.println("[语义分析] 使用变量: " + varName);
 
-        // 确保变量在符号表中（即使是未声明的也要记录）
         if (!symTable.contains(varName)) {
             symTable.put(varName, null);
-            // 检查错误（未声明变量）
             addError("变量 '" + varName + "' 在使用前未声明");
         }
     }
 
-    /**
-     * 判断条件是否为真
-     */
     private boolean isTrue(Object value) {
         if (value == null) return false;
         if (value instanceof Number) {
@@ -166,10 +154,6 @@ public class SemanticAnalyzer {
         return false;
     }
 
-    /**
-     * 计算表达式值
-     * 如果遇到未声明的变量，返回 null
-     */
     private Object evaluate(ASTNode node) {
         if (node == null) return null;
 
@@ -181,7 +165,6 @@ public class SemanticAnalyzer {
             IdNode id = (IdNode) node;
             String varName = id.getName();
 
-            // 确保变量在符号表中
             if (!symTable.contains(varName)) {
                 symTable.put(varName, null);
                 addError("变量 '" + varName + "' 未声明");
@@ -190,7 +173,6 @@ public class SemanticAnalyzer {
 
             Symbol sym = symTable.get(varName);
             if (sym == null || sym.getValue() == null) {
-                // 变量存在但未赋值
                 return null;
             }
             return sym.getValue();
@@ -200,37 +182,58 @@ public class SemanticAnalyzer {
             Object left = evaluate(bin.getLeft());
             Object right = evaluate(bin.getRight());
 
-            // 如果左右都能计算，则计算结果
             if (left != null && right != null) {
                 try {
                     int l = ((Number) left).intValue();
                     int r = ((Number) right).intValue();
-                    return calculate(l, r, bin.getOp());
+                    // 传入 bin 节点以获取位置信息
+                    return calculate(l, r, bin.getOp(), bin);
                 } catch (ClassCastException e) {
                     return null;
                 }
             }
-
-            // 如果有任何操作数无法计算，返回 null
             return null;
         }
 
         return null;
     }
 
-    private int calculate(int left, int right, String op) {
+    /**
+     * 计算算术和比较运算结果，包含除零检查
+     */
+    private int calculate(int left, int right, String op, ASTNode node) {
         switch (op) {
-            case "+": return left + right;
-            case "-": return left - right;
-            case "*": return left * right;
-            case "/": return right != 0 ? left / right : 0;
-            case "<": return left < right ? 1 : 0;
-            case "<=": return left <= right ? 1 : 0;
-            case ">": return left > right ? 1 : 0;
-            case ">=": return left >= right ? 1 : 0;
-            case "==": return left == right ? 1 : 0;
-            case "!=": return left != right ? 1 : 0;
-            default: return 0;
+            case "+":
+                return left + right;
+            case "-":
+                return left - right;
+            case "*":
+                return left * right;
+            case "/":
+                // 除零检查
+                if (right == 0) {
+                    // 获取错误位置信息
+                    int line = node != null ? node.getLine() : -1;
+                    int col = node != null ? node.getColumn() : -1;
+                    String location = (line > 0) ? " at line " + line + ":" + col : "";
+                    addError("除零错误: " + left + " / 0" + location);
+                    return 0;  // 返回0继续分析
+                }
+                return left / right;
+            case "<":
+                return left < right ? 1 : 0;
+            case "<=":
+                return left <= right ? 1 : 0;
+            case ">":
+                return left > right ? 1 : 0;
+            case ">=":
+                return left >= right ? 1 : 0;
+            case "==":
+                return left == right ? 1 : 0;
+            case "!=":
+                return left != right ? 1 : 0;
+            default:
+                return 0;
         }
     }
 

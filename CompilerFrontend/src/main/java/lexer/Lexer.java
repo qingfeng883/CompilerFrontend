@@ -75,7 +75,6 @@ public class Lexer {
                     readSeparator(currentWordCol);
                 }
                 // 非法字符
-                // 在 tokenize() 方法中，修改处理非法字符的 else 分支
                 else {
                     // 处理非法字符，并将后续的字母数字一起读取作为整体错误
                     int illegalStartCol = wordCol;
@@ -162,7 +161,7 @@ public class Lexer {
         while (pos < source.length()) {
             char c = peekChar();
             if (c == '\n' || Character.isWhitespace(c) ||
-                    Character.isLetter(c) || c == '_' || Character.isDigit(c) ||
+                    Character.isLetter(c) ||Character.isDigit(c) ||
                     isOperatorChar(c) || isSeparatorChar(c)) {
                 return;
             }
@@ -258,30 +257,48 @@ public class Lexer {
 
         tokens.add(new Token(type, word, startLine, startCol, code, category));
     }
+
     // 读取数字
     private void readNumber(int col) {
         int startLine = line;
         int startCol = col;
         StringBuilder sb = new StringBuilder();
 
-        // 读取数字部分
-        while (pos < source.length() && Character.isDigit(peekChar())) {
-            sb.append(peekChar());
-            advance();
+        // 读取数字和后续字符（直到遇到运算符、界符、空白符）
+        while (pos < source.length()) {
+            char c = peekChar();
+            // 如果是数字，正常读取
+            if (Character.isDigit(c)) {
+                sb.append(c);
+                advance();
+            }
+            // 如果是字母或其他非运算符、非界符、非空白符
+            else if (!isOperatorChar(c) && !isSeparatorChar(c) && !Character.isWhitespace(c)) {
+                // 继续读取，将整个非法数字作为一个整体报错
+                while (pos < source.length()) {
+                    char nextChar = peekChar();
+                    // 遇到运算符、界符、空白符时停止
+                    if (isOperatorChar(nextChar) || isSeparatorChar(nextChar) || Character.isWhitespace(nextChar)) {
+                        break;
+                    }
+                    sb.append(nextChar);
+                    advance();
+                }
+                String fullError = sb.toString();
+                errors.add("[ERROR] Invalid number (contains non-digit characters) | '" + fullError + "' | at " + startLine + ":" + startCol);
+                tokens.add(new Token(TokenType.ERROR, fullError, startLine, startCol, -1, "Invalid number"));
+                return;
+            }
+            // 遇到运算符、界符、空白符，停止读取
+            else {
+                break;
+            }
         }
 
         String numStr = sb.toString();
 
-        // 规则：检查数字后是否紧跟字母（非法单词，如 123abc）
-        if (pos < source.length() && (Character.isLetter(peekChar())  )) {
-            String remaining = "";
-            while (pos < source.length() && (Character.isLetterOrDigit(peekChar())  )) {
-                remaining += peekChar();
-                advance();
-            }
-            String fullErrorWord = numStr + remaining;
-            errors.add("[ERROR] Invalid word (digit followed by letter/underscore) | '" + fullErrorWord + "' | at " + startLine + ":" + startCol);
-            tokens.add(new Token(TokenType.ERROR, fullErrorWord, startLine, startCol, -1, "Invalid word (starts with digit)"));
+        // 如果numStr为空（理论上不应该发生）
+        if (numStr.isEmpty()) {
             return;
         }
 
